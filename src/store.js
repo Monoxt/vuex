@@ -35,6 +35,7 @@ export class Store {
     this._actionSubscribers = []
     this._mutations = Object.create(null)
     this._wrappedGetters = Object.create(null)
+    // recursively generate all modules in options and set their relationships
     this._modules = new ModuleCollection(options)
     this._modulesNamespaceMap = Object.create(null)
     this._subscribers = []
@@ -63,12 +64,17 @@ export class Store {
     const state = this._modules.root.state
 
     // init root module.
-    // this also recursively registers all sub-modules
-    // and collects all module getters inside this._wrappedGetters
+    // set _modulesNamespaceMap[namespace] = module
+    // collects all module getters inside this._wrappedGetters
+    // collects all module mutations inside this._mutations
+    // collects all module actions inside this._actions
+    // this also recursively registers all sub-modules(and set their state relationships)
+    // this means it will set child module state like state[moduleName] = module;
     installModule(this, state, [], this._modules.root)
 
-    // initialize the store state, which is responsible for the reactivity
-    // (also registers _wrappedGetters as computed properties)
+    // initialize the store state(_state), which is responsible for the reactivity
+    // this._state = reactive({ data: state })
+    // (also registers _wrappedGetters as computed properties(which will be store.getters))
     resetStoreState(this, state)
 
     // apply plugins
@@ -76,7 +82,9 @@ export class Store {
   }
 
   install (app, injectKey) {
+    // provide store to all the components in vue
     app.provide(injectKey || storeKey, this)
+    // set $store on global
     app.config.globalProperties.$store = this
 
     const useDevtools = this._devtools !== undefined
@@ -226,9 +234,11 @@ export class Store {
       assert(path.length > 0, 'cannot register the root module by using registerModule.')
     }
 
+    // first, register module in ModuleCollection
     this._modules.register(path, rawModule)
+    // then install module's mutation, action, getters and nested state
     installModule(this, this.state, path, this._modules.get(path), options.preserveState)
-    // reset store to update getters...
+    // Finally, reset store to update getters...(reset state reactivity and computed getters)
     resetStoreState(this, this.state)
   }
 
@@ -239,11 +249,15 @@ export class Store {
       assert(Array.isArray(path), `module path must be a string or an Array.`)
     }
 
+    // unregister module in ModuleCollection
     this._modules.unregister(path)
     this._withCommit(() => {
       const parentState = getNestedState(this.state, path.slice(0, -1))
+      // delete module state which relative to path
       delete parentState[path[path.length - 1]]
     })
+    // 从 store 中注销 module 就相当于根据现有的 module 重新设置 store
+    // 因为 我们已经注销了对应的 module，所以重新设置就好了
     resetStore(this)
   }
 
@@ -262,6 +276,7 @@ export class Store {
     resetStore(this, true)
   }
 
+  // handle committing state
   _withCommit (fn) {
     const committing = this._committing
     this._committing = true

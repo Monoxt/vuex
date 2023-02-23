@@ -8,6 +8,7 @@ export default class ModuleCollection {
   }
 
   get (path) {
+    // TIPS: reduce 也会按照顺序遍历数组
     return path.reduce((module, key) => {
       return module.getChild(key)
     }, this.root)
@@ -25,16 +26,27 @@ export default class ModuleCollection {
     update([], this.root, rawRootModule)
   }
 
+  /**
+   * register
+   * register 根据我们的配置不断递归生成模块，用 path 保存该模块的所有的祖先模块，且在生成子模块的时候设置父子模块的关系
+   * @param {*} path 包含了当前模块的所有父模块
+   * @param {*} rawModule
+   * @param {*} runtime
+   */
   register (path, rawModule, runtime = true) {
     if (__DEV__) {
       assertRawModule(path, rawModule)
     }
 
+    // 先生成这次要注册的模块
     const newModule = new Module(rawModule, runtime)
+    // 没有父模块说明是根模块
     if (path.length === 0) {
       this.root = newModule
     } else {
+      // path 最后一个元素代表当前模块，所以取倒数第二个就是当前模块的父模块
       const parent = this.get(path.slice(0, -1))
+      // 设置父子模块的关系
       parent.addChild(path[path.length - 1], newModule)
     }
 
